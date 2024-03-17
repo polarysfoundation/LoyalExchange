@@ -1,0 +1,20 @@
+{
+  "name": "loyalexchange",
+  "version": "0.1.0",
+  "description": "Smart contract for buy and sell tokens non-fungibles on blockchain, with royalty support",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "blockchain",
+    "ethereum",
+    "bnb",
+    "bitcoin"
+  ],
+  "author": "Uranus Dev",
+  "license": "MIT",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2"
+  }
+}
