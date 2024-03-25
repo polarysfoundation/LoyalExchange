@@ -2,3 +2,4 @@
 /contracts/artifacts
 /contracts/RoyaltyProtocol/artifacts
 /contracts/TransferHelper/artifacts
+.vscode/cody.json

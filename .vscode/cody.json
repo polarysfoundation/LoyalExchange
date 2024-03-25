@@ -3,7 +3,6 @@
     "description": "Comprehensive security audit of the selected Solidity smart contract code",
     "prompt": "Please analyze the selected Solidity code and generate a detailed audit report in Markdown format covering: \n\n* **Summary of the contract functionality** \n* **Analysis of potential security vulnerabilities** \n  * Reentrancy \n  * Integer overflow/underflow \n  * Access control & authorization \n  * Logic errors \n  * External contract calls \n  * Denial of service \n  * Front running \n  * etc. \n\n* **For each identified vulnerability or security concern provide:** \n  * Description of the issue \n  * Severity level \n  * Potential consequences \n  * Recommended mitigations/fixes \n\n* **Where relevant, reference the SWC Registry to classify the vulnerabilities. Format the report in a clear and easy-to-understand manner for the developer to address the findings.**",
     "context": {
-      "command": "mkdir audit && cd audit && touch REPORT.md",
       "currentDir": true,
       "selection": true
     }
@@ -12,8 +11,16 @@
     "description": "Commit message for current changes",
     "prompt": "Suggest an informative commit message by summarizing code changes from the shared command output. The commit message should follow the conventional commit format and provide meaningful context for future readers.",
     "context": {
-      "selection": false,
+      "selection": true,
       "command": "git diff --cached"
+    }
+  },
+  "truffle-test": {
+    "descriptio": "Run Truffle tests on the current contract",
+    "prompt": "please create a javascript file with all the functions of the code of the selected smart contract, to carry out the respective test, to detect possible errors within the logica and its operation, without ignoring any of them, providing a complete and understandable test file.",
+    "context": {
+      "currentDir": true,
+      "selection": true
     }
   }
 }

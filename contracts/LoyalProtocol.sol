@@ -24,10 +24,12 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
 
     uint256 public feeRate;
 
-    address public feeAddress;
     IRoyaltyProtocol public royaltyVault;
     ITransferHelper public transferHelper;
+
+    address public feeAddress;
     address public admin;
+    address public owner;
 
     // mapping para ordenes activas y llenas
     // Key order id
@@ -68,6 +70,14 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         _;
     }
 
+    modifier onlyOwner() {
+        require(owner == msg.sender, "only owner can call this method");
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
     /********************** Functions **********************/
 
     function updateRoyaltyProtocol(address newRoyaltyAddress) external override onlyAdmin {
@@ -86,9 +96,14 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         feeRate = newFeeRate;
     }
 
-    function updateAdmin(address newAdminAddress) external override onlyAdmin {
+    function updateAdmin(address newAdminAddress) external override onlyOwner {
         require(newAdminAddress != address(0), "Non-zero admin address");
         admin = newAdminAddress;
+    }
+
+    function updateOwnership(address newOwnerAddress) external override onlyOwner {
+        require(newOwnerAddress != address(0), "Non-zero owner address");
+        owner = newOwnerAddress;
     }
 
     function createBasicOrder(BasicOrder calldata order, bytes calldata signature) external override nonReentrant {
@@ -105,7 +120,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
 
         id = _generateOrderHash(order);
 
-        require(SignatureVerifier.verifySignature(id, signature, seller), "Invalid signature");
+        require(SignatureVerifier.verifySignature(id, signature, seller) && seller == IERC721(order.collectionAddr).ownerOf(order.tokenId), "Invalid signature");
         require(_verifyOwnerShip(order.collectionAddr, order.tokenId, order.asset), "Only owner can create order");
         require(_verifyTokenApproval(order.collectionAddr, order.tokenId, order.asset), "Must approve transferhelper");
         require(_checkOrderParams(order, id), "Invalid order parameters");
@@ -138,9 +153,9 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         emit OrderCanceled(order);
     }
 
-    function fillBasicOrder(address collectionAddr, uint256 tokenId, AssetType asset, uint256 supply, bytes memory signature) external override nonReentrant payable {
+    function fillBasicOrder(address seller, address collectionAddr, uint256 tokenId, AssetType asset, uint256 supply, bytes memory signature) external override nonReentrant payable {
         address buyer = msg.sender;
-        bytes32 id = _id[collectionAddr][tokenId];
+        bytes32 id = _id[seller][collectionAddr][tokenId];
 
         BasicOrder memory order = _decodeOrder(_order[id], id);
         order.buyer = buyer;
@@ -161,6 +176,21 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
             require(price == order.price, "value must be equal to order price");
         }
 
+        uint256 feeToSend = price.mul(feeRate).div(MAX_FEE_RATE);
+
+        if(order.seller != address(0)) {
+            payable(order.seller).transfer(price.sub(feeToSend));
+        }
+
+        if(feeAddress != address(0)){
+            payable(feeAddress).transfer(feeToSend);
+        }
+
+        delete _order[id];
+        delete _id[order.seller][order.collectionAddr][order.tokenId];
+        _ordersFilled[id] = true;
+
+        _addOrderFilled();
 
         if(_royaltySupported[id]){
             price = _distributeRoyalties(order.collectionAddr, price, id, order.currency); 
@@ -168,27 +198,12 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
 
         _transferAsset(order.collectionAddr, order.tokenId, order.buyer, order.seller, order.supply, order.asset);
 
-
-        uint256 feeToSend = price.mul(feeRate).div(MAX_FEE_RATE);
-        payable(order.seller).transfer(price.sub(feeToSend));
-
-        if(feeAddress != address(0)){
-            payable(feeAddress).transfer(feeToSend);
-        }
-
-        delete _order[id];
-        delete _id[order.collectionAddr][order.tokenId];
-        _ordersFilled[id] = true;
-
         emit OrderFilled(order);
-
-        _addOrderFilled();
-
     }
 
-    function fillBasicOrderWithERC20(address collectionAddr, uint256 tokenId, AssetType asset, uint256 supply, bytes memory signature) external override nonReentrant {
+    function fillBasicOrderWithERC20(address seller, address collectionAddr, uint256 tokenId, AssetType asset, uint256 supply, bytes memory signature) external override nonReentrant {
         address buyer = msg.sender;
-        bytes32 id = _id[collectionAddr][tokenId];
+        bytes32 id = _id[seller][collectionAddr][tokenId];
 
         BasicOrder memory order = _decodeOrder(_order[id], id);
         order.buyer = buyer;
@@ -202,6 +217,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         require(SignatureVerifier.verifySignature(id, signature, buyer), "Invalid signature");
         require(_checkOrderParams(order, id), "order already filled or expired");
         require(order.currency != address(0), "Order must be filled without erc20");
+        require(order.seller == IERC721(collectionAddr).ownerOf(tokenId), "seller must be owner");
 
         if(asset == AssetType.erc1155) {
             require(price == order.price.mul(supply), "value must be same than order price");
@@ -209,28 +225,29 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
             require(price == order.price, "value must be same than order price");
         }
 
+        delete _order[id];
+        delete _id[order.seller][order.collectionAddr][order.tokenId];
+        _ordersFilled[id] = true;
+
+        _addOrderFilled();
+
         if(_royaltySupported[id]){
             price = _distributeRoyalties(order.collectionAddr, price, id, order.currency);
         }
 
         _transferAsset(order.collectionAddr, order.tokenId, order.buyer, order.seller, order.supply, order.asset);
 
-
         uint256 feeToSend = price.mul(feeRate).div(MAX_FEE_RATE);
 
-        _transferToken(order.currency, price.sub(feeToSend), order.buyer, order.seller);
+        if(order.seller != address(0)) {
+            _transferToken(order.currency, price.sub(feeToSend), order.buyer, order.seller);
+        } 
 
         if(feeAddress != address(0)){
             _transferToken(order.currency, feeToSend, order.buyer, feeAddress);
         }
 
-        delete _order[id];
-        _ordersFilled[id] = true;
-
         emit OrderFilled(order);
-
-        _addOrderFilled();
-
     }
 
     function makeOffer(Offer calldata offer, bytes memory signature) external payable override nonReentrant {
@@ -259,11 +276,14 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
 
         require(_checkOfferParams(offer, id), "Offer filled or does not exist");
 
-        _safeSendETH(maker, offer.price);
-
         delete _offers[collectionAddr][tokenId][id];
         delete _offersId[maker];
 
+        if(offer.currency != address(0)){
+            _safeSendETH(maker, offer.price);
+        } else {
+            IERC20(offer.currency).transfer(maker, offer.price);
+        }
 
         emit OfferCanceled(offer);
     }
@@ -283,6 +303,8 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         _offers[offer.collectionAddr][offer.tokenId][id] = b;
         _offersId[maker] = id;
 
+        transferHelper.erc20TransferFrom(offer.currency, maker, address(this), offer.price);
+
         emit OfferCreated(offer);
     }
 
@@ -301,25 +323,13 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         require(_checkOfferParams(offer, id), "Offer accepted or does not exist");
         require(_verifyTokenApproval(offer.collectionAddr, offer.tokenId, offer.asset), "Must approve transferhelper");
 
-
-
         if(royaltySupport){
             value = _distributeRoyalties(offer.collectionAddr, value, id, offer.currency);
         }
 
-        _transferAsset(offer.collectionAddr, offer.tokenId, offer.taker, offer.maker, offer.supply, offer.asset);
-
         offer.royaltySupport = royaltySupport;
 
         uint256 feeToSend = value.mul(feeRate).div(MAX_FEE_RATE);
-
-        if(offer.currency != address(0) ){
-            IERC20(offer.currency).transfer(taker, value.sub(feeToSend));
-
-            if(feeAddress != address(0)){
-                IERC20(offer.currency).transfer(feeAddress, feeToSend);
-            }
-        } 
 
         if(offer.currency == address(0)){
             _safeSendETH(taker, value.sub(feeToSend));
@@ -333,17 +343,26 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         delete _offersId[offer.maker];
         _ordersFilled[id];
 
-        emit OfferAccepted(offer);
-
         _addOrderFilled();
 
+        _transferAsset(offer.collectionAddr, offer.tokenId, offer.taker, offer.maker, offer.supply, offer.asset);
+
+        if(offer.currency != address(0) ){
+            IERC20(offer.currency).transfer(taker, value.sub(feeToSend));
+
+            if(feeAddress != address(0)){
+                IERC20(offer.currency).transfer(feeAddress, feeToSend);
+            }
+        } 
+
+        emit OfferAccepted(offer);
     }
 
     function createAuction(BasicAuction calldata auction, bytes memory signature) external override nonReentrant {
         address seller = msg.sender;
         bytes32 id;
 
-        id = _id[auction.collectionAddr][auction.tokenId];
+        id = _id[seller][auction.collectionAddr][auction.tokenId];
 
         if(id != bytes32(0)){
             BasicAuction memory a = _decodeAuction(_auctions[id], id);
@@ -366,15 +385,15 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
     }
 
     function cancelAuction(address collectionAddr, uint256 tokenId, bytes memory signature) external override nonReentrant {
-        bytes32 id = _id[collectionAddr][tokenId];
         address seller = msg.sender;
+        bytes32 id = _id[seller][collectionAddr][tokenId];
+
 
         BasicAuction memory auction = _decodeAuction(_auctions[id], id);
         uint256 previousBid = _highestBid[id];
         address previousBidder = _highestBidder[id];
 
         require(SignatureVerifier.verifySignature(id, signature, seller), "Invalid signature");
-        require(_isOrderOwner(id), "Only owner can cancel");
         require(_verifyOwnerShip(auction.collectionAddr, auction.tokenId, AssetType.erc721), "Only owner can cancel this auction");
         require(previousBid == 0 && previousBidder == address(0), "Auction started");
         require(_checkAuctionParams(auction, id), "Auction does not exist or started");
@@ -386,8 +405,8 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
 
     }
 
-    function sendBidWithETH(address collectionAddr, uint256 tokenId, uint256 bid, bytes memory signature) external payable override nonReentrant {
-        bytes32 id = _id[collectionAddr][tokenId];
+    function sendBidWithETH(address seller, address collectionAddr, uint256 tokenId, uint256 bid, bytes memory signature) external payable override nonReentrant {
+        bytes32 id = _id[seller][collectionAddr][tokenId];
 
         uint256 value = msg.value;
         address bidder = msg.sender;
@@ -422,8 +441,8 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         emit NewBidCreated(auction);
     }
 
-    function sendBidWithERC20(address collectionAddr, uint256 tokenId, uint256 bid, bytes memory signature) external override nonReentrant {
-        bytes32 id = _id[collectionAddr][tokenId];
+    function sendBidWithERC20(address seller, address collectionAddr, uint256 tokenId, uint256 bid, bytes memory signature) external override nonReentrant {
+        bytes32 id = _id[seller][collectionAddr][tokenId];
 
         uint256 value = bid;
         address bidder = msg.sender;
@@ -437,18 +456,21 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         uint256 previousBid = _highestBid[id];
         address previousBidder = _highestBidder[id];
         if(previousBid != 0 && previousBidder != address(0)){
-
-
             require(value > previousBid.mul(2).div(100), "Invalid bid amount");
-            IERC20(auction.currency).transfer(previousBidder, previousBid);
 
             _highestBid[id] = value;
             _highestBidder[id] = bidder;
+
+            IERC20(auction.currency).transfer(previousBidder, previousBid);
+            _transferToken(auction.currency, value, bidder, address(this));
         } else {
             require(value == auction.initialPrice, "Invalid bid amount");
+
             auction.endedAt = _calculateAuctionEndTime();
             _highestBid[id] = value;
             _highestBidder[id] = bidder; 
+
+            _transferToken(auction.currency, value, bidder, address(this));
         }
 
         bytes memory b = _encodeAuction(auction, id);
@@ -458,10 +480,10 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         emit NewBidCreated(auction);
     }
 
-    function claimAuction(address collectionAddr, uint256 tokenId, bytes memory signature) external override nonReentrant {
-        bytes32 id = _id[collectionAddr][tokenId];
-
+    function claimAuction(address seller, address collectionAddr, uint256 tokenId, bytes memory signature) external override nonReentrant {
         address operator = msg.sender;
+
+        bytes32 id = _id[seller][collectionAddr][tokenId];
 
         BasicAuction memory auction = _decodeAuction(_auctions[id], id);
 
@@ -469,25 +491,9 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
         address currentBidder = _highestBidder[id];
 
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
-        require(_checkAuctionParams(auction, id), "Auction already filled");
+        require(_checkAuctionParams(auction, id), "Auction already filled or expired");
         require(currentBid != 0 && currentBidder != address(0), "Auction has not begun");
-        require(_verifyOwnerShip(auction.collectionAddr, auction.tokenId, AssetType.erc721) || currentBidder == operator, "Invalid claimer");
-
-        if(auction.royaltySupport) {
-            currentBid = _distributeRoyalties(auction.collectionAddr, currentBid, id, auction.currency);
-        }
-
-        _transferAsset(auction.collectionAddr, auction.tokenId, auction.seller, auction.highestBidder, 1, AssetType.erc721);
-
-        uint256 feeToSend = currentBid.mul(feeRate).div(MAX_FEE_RATE);
-
-        if(auction.currency != address(0) ){
-            IERC20(auction.currency).transfer(auction.seller, currentBid.sub(feeToSend));
-
-            if(feeAddress != address(0)){
-                IERC20(auction.currency).transfer(feeAddress, feeToSend);
-            }
-        } 
+        require(_verifyOwnerShip(auction.collectionAddr, auction.tokenId, AssetType.erc721) && auction.seller == operator || currentBidder == operator , "Invalid claimer");
 
         if(auction.currency == address(0)){
             _safeSendETH(auction.seller, currentBid.sub(feeToSend));
@@ -505,27 +511,49 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard {
 
         _ordersFilled[id] = true;
 
-        emit AuctionClaimed(auction);
-
         _addOrderFilled();
 
+        if(auction.royaltySupport) {
+            currentBid = _distributeRoyalties(auction.collectionAddr, currentBid, id, auction.currency);
+        }
+
+        _transferAsset(auction.collectionAddr, auction.tokenId, auction.seller, auction.highestBidder, 1, AssetType.erc721);
+
+        uint256 feeToSend = currentBid.mul(feeRate).div(MAX_FEE_RATE);
+
+        if(auction.currency != address(0) ){
+            require(IERC20(auction.currency).balanceOf(address(this)) >= currentBid.sub(feeToSend), "Insufficient contract balance"); // Additional check
+            IERC20(auction.currency).transfer(auction.seller, currentBid.sub(feeToSend));
+
+            if(feeAddress != address(0)){
+                IERC20(auction.currency).transfer(feeAddress, feeToSend);
+            }
+        } 
+
+        emit AuctionClaimed(auction);
 
     }
 
-    function auctionRefund(address collectionAddr, uint256 tokenId, bytes32 id, bytes memory signature) external override nonReentrant {
+    function auctionRefund(address seller, address collectionAddr, uint256 tokenId, bytes32 id, bytes memory signature) external override nonReentrant {
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
         require(_checkRefundCondition(collectionAddr, tokenId, id), "Auction cannot be refunded");
 
         address bidder = _highestBidder[id];
         uint256 amount = _highestBid[id];
 
-        delete _id[collectionAddr][tokenId];
+        BasicAuctions memory a  = _decodeAuction(_auctions[id], id);
+
+        delete _id[seller][collectionAddr][tokenId];
         delete _auctions[id];
         delete _claimable[id];
         delete _highestBid[id];
         delete _highestBidder[id];
 
-        _safeSendETH(bidder, amount);
+        if(a.currency != address(0)) {
+            _safeSendETH(bidder, amount);
+        } else {
+            IERC20(a.currency).transfer(bidder, amount);
+        }
 
     }
 
