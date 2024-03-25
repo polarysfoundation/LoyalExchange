@@ -1,1 +1,4 @@
 /node_modules
+/contracts/artifacts
+/contracts/RoyaltyProtocol/artifacts
+/contracts/TransferHelper/artifacts
