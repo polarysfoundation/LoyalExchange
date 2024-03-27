@@ -1,0 +1,196 @@
+{
+	"compiler": {
+		"version": "0.8.4+commit.c7e474f2"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [
+					{
+						"components": [
+							{
+								"internalType": "address",
+								"name": "collectionAddr",
+								"type": "address"
+							},
+							{
+								"internalType": "uint256",
+								"name": "tokenId",
+								"type": "uint256"
+							},
+							{
+								"internalType": "uint256",
+								"name": "initialPrice",
+								"type": "uint256"
+							},
+							{
+								"internalType": "uint256",
+								"name": "highestBid",
+								"type": "uint256"
+							},
+							{
+								"internalType": "address",
+								"name": "seller",
+								"type": "address"
+							},
+							{
+								"internalType": "address",
+								"name": "highestBidder",
+								"type": "address"
+							},
+							{
+								"internalType": "address",
+								"name": "currency",
+								"type": "address"
+							},
+							{
+								"internalType": "uint256",
+								"name": "startedAt",
+								"type": "uint256"
+							},
+							{
+								"internalType": "uint256",
+								"name": "endedAt",
+								"type": "uint256"
+							},
+							{
+								"internalType": "bool",
+								"name": "royaltySupport",
+								"type": "bool"
+							}
+						],
+						"internalType": "struct BasicAuction",
+						"name": "auction",
+						"type": "tuple"
+					}
+				],
+				"name": "_generateAuctionHash",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"stateMutability": "pure",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"components": [
+							{
+								"internalType": "address",
+								"name": "collectionAddr",
+								"type": "address"
+							},
+							{
+								"internalType": "uint256",
+								"name": "tokenId",
+								"type": "uint256"
+							},
+							{
+								"internalType": "address",
+								"name": "seller",
+								"type": "address"
+							},
+							{
+								"internalType": "address",
+								"name": "buyer",
+								"type": "address"
+							},
+							{
+								"internalType": "uint256",
+								"name": "price",
+								"type": "uint256"
+							},
+							{
+								"internalType": "uint256",
+								"name": "supply",
+								"type": "uint256"
+							},
+							{
+								"internalType": "uint256",
+								"name": "expirationTime",
+								"type": "uint256"
+							},
+							{
+								"internalType": "bool",
+								"name": "royaltySupport",
+								"type": "bool"
+							},
+							{
+								"internalType": "address",
+								"name": "currency",
+								"type": "address"
+							},
+							{
+								"internalType": "enum AssetType",
+								"name": "asset",
+								"type": "uint8"
+							}
+						],
+						"internalType": "struct BasicOrder",
+						"name": "order",
+						"type": "tuple"
+					}
+				],
+				"name": "_generateOrderHash",
+				"outputs": [
+					{
+						"internalType": "bytes32",
+						"name": "",
+						"type": "bytes32"
+					}
+				],
+				"stateMutability": "pure",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/libs/Encoder.sol": "Encoder"
+		},
+		"evmVersion": "istanbul",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": true,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/libs/Encoder.sol": {
+			"keccak256": "0x984737d2a50d20e80e03afbb181eae54e0d00c4ce666f42a72893554068bf151",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://7160516d72bc1c3a1f183656e17b9c1b78999dd56134fd32389fb39179f75c46",
+				"dweb:/ipfs/QmTJswFMuVEzZogHEtdoooAVG61vN7bvJJG4zmXMry8ix5"
+			]
+		},
+		"contracts/libs/Structs.sol": {
+			"keccak256": "0x18db5215ffc0e2fe08a2cd98dd7639fb6cdc3a9094e9166bafc7238a18d93752",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://0a652a77cc1a62050d293ec3f7dbbadf5e21dafcb53f3edc2c78e37fc2153aaa",
+				"dweb:/ipfs/QmVatDBqdYTiABJV1USUG7Dr3mjZ4Ze5PsGrZwK3Ro9C6t"
+			]
+		}
+	},
+	"version": 1
+}

@@ -717,18 +717,42 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
     }
 
     function _checkOrderParams(BasicOrder calldata order, bytes32 id) internal view returns (bool) {
-        return
-            order.collectionAddr != address(0) &&
-            order.price > 0 &&
-            order.seller != address(0) &&
-            order.expirationTime > 0 &&
-            order.expirationTime > block.timestamp &&
-            !_ordersFilled[id] && 
-            (order.seller == msg.sender ||
-            order.buyer == msg.sender) && 
-            (IERC1155(order.collectionAddr).balanceOf(order.seller, order.tokenId) > 0 && 
-            order.seller == IERC721(order.collectionAddr).ownerOf(order.tokenId));
+        // Ensure valid addresses
+        if (order.collectionAddr == address(0) || 
+            order.seller == address(0) ||
+            (order.buyer != address(0) && order.buyer != msg.sender)) {
+            return false; 
+        }
+
+        // Ensure positive price and valid expiration
+        if (order.price <= 0 || 
+            order.expirationTime <= 0 ||
+            order.expirationTime <= block.timestamp) {
+            return false;
+        }
+
+        // Ensure order not already filled
+        if (_ordersFilled[id]) {
+            return false;
+        }
+    
+        // Ensure seller owns the NFT and buyer (if specified) is authorized
+        if (order.seller != msg.sender && order.buyer != msg.sender) {
+            return false; 
+        }
+
+        // Check token ownership (potentially cached for gas optimization)
+        if (IERC1155(order.collectionAddr).balanceOf(order.seller, order.tokenId) <= 0 && order.asset == AssetType.erc1155) {
+            return false; 
+        } 
+
+        if(order.seller != IERC721(order.collectionAddr).ownerOf(order.tokenId) && order.asset == AssetType.erc721) {
+            return false;
+        }
+
+        return true; 
     }
+
 
     function _safeSendETH(address recipient, uint256 amount) private {
         require(

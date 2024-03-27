@@ -49,7 +49,7 @@ contract OfferProtocol is IOfferProtocol, ReentrancyGuard, Ownable {
     }
 
     modifier nonZeroAddress(address newAddr) {
-        require(newAddr != address(0), "Non-zero address");
+        require(newAddr != address(0), "Non-zero address"); 
         _;
     }
 

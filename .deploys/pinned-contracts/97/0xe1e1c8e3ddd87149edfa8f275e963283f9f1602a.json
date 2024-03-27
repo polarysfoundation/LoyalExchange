@@ -1,6 +1,6 @@
 {
   "name": "RoyaltyProtocol",
-  "address": "0x7026ce5d27a7abea0fbac1f0880abee6c3a37a12",
+  "address": "0xe1e1c8e3ddd87149edfa8f275e963283f9f1602a",
   "abi": [
     {
       "inputs": [
@@ -129,5 +129,5 @@
     }
   ],
   "filePath": " - connect to localhost - /contracts/RoyaltyProtocol/RoyaltyProtocol.sol",
-  "pinnedAt": 1711391713952
+  "pinnedAt": 1711507896402
 }
