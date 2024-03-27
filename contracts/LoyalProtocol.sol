@@ -153,7 +153,18 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         _addOrderFilled();
 
         if(_royaltySupported[id]){
-            price = _distributeRoyalties(order.collectionAddr, price, id, order.currency); 
+            Royalty memory r = royaltyVault.getRoyaltyInfo(order.collectionAddr);
+            uint256 royaltyFee = price.mul(r.feeRate).div(MAX_FEE_RATE);
+
+            delete _royaltySupported[id];
+            if(r.feeRecipient != address(0)) {
+                if(order.currency == address(0)){
+                    payable(r.feeRecipient).transfer(royaltyFee);
+                } else {
+                    _transferToken(order.currency, royaltyFee, msg.sender, r.feeRecipient);
+                }
+            }
+            price = price.sub(royaltyFee);
         }
 
         if(order.seller != address(0)) {
@@ -191,7 +202,18 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         _addOrderFilled();
 
         if(_royaltySupported[id]){
-            price = _distributeRoyalties(order.collectionAddr, price, id, order.currency);
+            Royalty memory r = royaltyVault.getRoyaltyInfo(order.collectionAddr);
+            uint256 royaltyFee = price.mul(r.feeRate).div(MAX_FEE_RATE);
+
+            delete _royaltySupported[id];
+            if(r.feeRecipient != address(0)) {
+                if(order.currency == address(0)){
+                    payable(r.feeRecipient).transfer(royaltyFee);
+                } else {
+                    _transferToken(order.currency, royaltyFee, msg.sender, r.feeRecipient);
+                }
+            }
+            price = price.sub(royaltyFee);
         }
 
         _transferAsset(order.collectionAddr, order.tokenId, order.seller, order.buyer, order.supply, order.asset);
@@ -347,7 +369,18 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         _addOrderFilled();
 
         if(auction.royaltySupport) {
-            currentBid = _distributeRoyalties(auction.collectionAddr, currentBid, id, auction.currency);
+            Royalty memory r = royaltyVault.getRoyaltyInfo(auction.collectionAddr);
+            uint256 royaltyFee = currentBid.mul(r.feeRate).div(MAX_FEE_RATE);
+
+            delete _royaltySupported[id];
+            if(r.feeRecipient != address(0)) {
+                if(auction.currency == address(0)){
+                    _safeSendETH(r.feeRecipient, royaltyFee);
+                } else {
+                    _transferToken(auction.currency, royaltyFee, auction.highestBidder, r.feeRecipient);
+                }
+            }
+            currentBid = currentBid.sub(royaltyFee);
         }
 
         _transferAsset(auction.collectionAddr, auction.tokenId, auction.seller, auction.highestBidder, 1, AssetType.erc721);
@@ -486,22 +519,6 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         } else {
             transferHelper.erc1155TransferFrom(collectionAddr, from, to, tokenId, supply);
         }
-    }
-
-    function _distributeRoyalties(address collectionAddr, uint256 value, bytes32 id, address currency) internal returns(uint256) {
-        Royalty memory r = royaltyVault.getRoyaltyInfo(collectionAddr);
-        uint256 royaltyFee = value.mul(r.feeRate).div(MAX_FEE_RATE);
-
-        uint256 rest = value.sub(royaltyFee);
-        delete _royaltySupported[id];
-        if(r.feeRecipient != address(0)) {
-            if(currency != address(0)){
-                _safeSendETH(r.feeRecipient, royaltyFee);
-            } else {
-                _transferToken(currency, royaltyFee, msg.sender, r.feeRecipient);
-            }
-        }
-        return rest;
     }
 
     function _calculateAuctionEndTime() private view returns (uint256) {
