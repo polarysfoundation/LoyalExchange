@@ -1,6 +1,6 @@
 {
   "name": "LoyalProtocol",
-  "address": "0xd929ed3ceb69c5fb6c21c314742c9188d2cd0286",
+  "address": "0x4c8667e263a8c19e462e10fd097573c070eec69f",
   "abi": [
     {
       "anonymous": false,
@@ -1738,5 +1738,5 @@
     }
   ],
   "filePath": " - connect to localhost - /contracts/LoyalProtocol.sol",
-  "pinnedAt": 1711507626376
+  "pinnedAt": 1711519747519
 }

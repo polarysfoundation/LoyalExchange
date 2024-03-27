@@ -96,7 +96,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
         if(id != bytes32(0)){
             BasicOrder memory o = _decodeOrder(_order[id], id);
-            require(o.expirationTime > block.timestamp || o.seller != msg.sender, "An active order exist");
+            require(o.expirationTime < block.timestamp || o.seller != msg.sender, "An active order exist");
         }
 
         id = _generateOrderHash(order);
@@ -146,14 +146,6 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
         uint256 feeToSend = price.mul(feeRate).div(MAX_FEE_RATE);
 
-        if(order.seller != address(0)) {
-            payable(order.seller).transfer(price.sub(feeToSend));
-        }
-
-        if(feeAddress != address(0)){
-            payable(feeAddress).transfer(feeToSend);
-        }
-
         delete _order[id];
         delete _id[order.seller][order.collectionAddr][order.tokenId];
         _ordersFilled[id] = true;
@@ -164,7 +156,15 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
             price = _distributeRoyalties(order.collectionAddr, price, id, order.currency); 
         }
 
-        _transferAsset(order.collectionAddr, order.tokenId, order.buyer, order.seller, order.supply, order.asset);
+        if(order.seller != address(0)) {
+            payable(order.seller).transfer(price.sub(feeToSend));
+        }
+
+        if(feeAddress != address(0)){
+            payable(feeAddress).transfer(feeToSend);
+        }
+
+        _transferAsset(order.collectionAddr, order.tokenId, order.seller, order.buyer, order.supply, order.asset);
 
         emit OrderFilled(order);
     }
@@ -194,7 +194,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
             price = _distributeRoyalties(order.collectionAddr, price, id, order.currency);
         }
 
-        _transferAsset(order.collectionAddr, order.tokenId, order.buyer, order.seller, order.supply, order.asset);
+        _transferAsset(order.collectionAddr, order.tokenId, order.seller, order.buyer, order.supply, order.asset);
 
         uint256 feeToSend = price.mul(feeRate).div(MAX_FEE_RATE);
 
@@ -657,7 +657,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
     }
 
     function _encodeOrder(BasicOrder memory order, bytes32 id) internal returns (bytes memory) {
-        bytes memory b = new bytes(256);
+        bytes memory b = new bytes(288);
 
         address collectionAddr = order.collectionAddr;
         uint256 tokenId = order.tokenId;
@@ -667,8 +667,9 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         uint256 supply = order.supply;
         uint256 expirationTime = order.expirationTime;
         address currency = order.currency;
+        AssetType asset = order.asset;
 
-        _ordersFilled[id] = order.royaltySupport;
+        _royaltySupported[id] = order.royaltySupport;
 
         assembly {
             mstore(add(b, 32), collectionAddr)
@@ -679,6 +680,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
             mstore(add(b, 192), supply)
             mstore(add(b, 224), expirationTime)
             mstore(add(b, 256), currency)
+            mstore(add(b, 288), asset)
         }
 
         return b;
@@ -717,41 +719,16 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
     }
 
     function _checkOrderParams(BasicOrder calldata order, bytes32 id) internal view returns (bool) {
-        // Ensure valid addresses
-        if (order.collectionAddr == address(0) || 
-            order.seller == address(0) ||
-            (order.buyer != address(0) && order.buyer != msg.sender)) {
-            return false; 
-        }
-
-        // Ensure positive price and valid expiration
-        if (order.price <= 0 || 
-            order.expirationTime <= 0 ||
-            order.expirationTime <= block.timestamp) {
-            return false;
-        }
-
-        // Ensure order not already filled
-        if (_ordersFilled[id]) {
-            return false;
-        }
-    
-        // Ensure seller owns the NFT and buyer (if specified) is authorized
-        if (order.seller != msg.sender && order.buyer != msg.sender) {
-            return false; 
-        }
-
-        // Check token ownership (potentially cached for gas optimization)
-        if (IERC1155(order.collectionAddr).balanceOf(order.seller, order.tokenId) <= 0 && order.asset == AssetType.erc1155) {
-            return false; 
-        } 
-
-        if(order.seller != IERC721(order.collectionAddr).ownerOf(order.tokenId) && order.asset == AssetType.erc721) {
-            return false;
-        }
-
-        return true; 
-    }
+        return
+            order.collectionAddr != address(0) &&
+            order.price > 0 &&
+            order.seller != address(0) &&
+            order.expirationTime > 0 &&
+            order.expirationTime > block.timestamp &&
+            !_ordersFilled[id] && 
+            (order.seller == msg.sender ||
+            order.buyer == msg.sender);
+    } 
 
 
     function _safeSendETH(address recipient, uint256 amount) private {
