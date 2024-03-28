@@ -24,6 +24,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
     address public admin;
     address public feeAddress;
+    bool public paused;
 
     IRoyaltyProtocol public royaltyVault;
     ITransferHelper public transferHelper;
@@ -67,21 +68,34 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         _;
     }
 
+    modifier isPaused() {
+        require(!paused, "Protocol is paused");
+        _;
+    }
+
     /********************** Functions **********************/
 
-    function updateRoyaltyProtocol(address newRoyaltyAddress) external onlyAdmin {
+    function pause() external onlyOwner {
+        paused = true;
+    }
+
+    function unpause() external onlyOwner {
+        paused = false;
+    }
+
+    function updateRoyaltyProtocol(address newRoyaltyAddress) external onlyAdmin isPaused {
         royaltyVault = IRoyaltyProtocol(newRoyaltyAddress);
     }
 
-    function updateTransferHelper(address newTransferHelper) external onlyAdmin {
+    function updateTransferHelper(address newTransferHelper) external onlyAdmin isPaused {
         transferHelper = ITransferHelper(newTransferHelper);
     }
 
-    function updateFeeAddress(address newFeeAddress) external onlyAdmin {
+    function updateFeeAddress(address newFeeAddress) external onlyAdmin isPaused {
         feeAddress = newFeeAddress;
     }
 
-    function updateFeeRate(uint256 newFeeRate) external onlyAdmin {
+    function updateFeeRate(uint256 newFeeRate) external onlyAdmin isPaused {
         feeRate = newFeeRate;
     }
 
@@ -89,7 +103,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         admin = newAdminAddress;
     }
 
-    function createBasicOrder(BasicOrder calldata order, bytes calldata signature) external override nonReentrant {
+    function createBasicOrder(BasicOrder calldata order, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id;
 
         id = _id[msg.sender][order.collectionAddr][order.tokenId];
@@ -114,7 +128,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit OrderCreated(order);
     }
 
-    function cancelBasicOrder(BasicOrder calldata order, bytes calldata signature) external override nonReentrant {
+    function cancelBasicOrder(BasicOrder calldata order, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id = _id[msg.sender][order.collectionAddr][order.tokenId];
 
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
@@ -131,7 +145,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit OrderCanceled(order);
     }
 
-    function fillBasicOrder(BasicOrder calldata order, bytes calldata signature) external override payable nonReentrant {
+    function fillBasicOrder(BasicOrder calldata order, bytes calldata signature) external override payable nonReentrant isPaused {
         bytes32 id = _id[order.seller][order.collectionAddr][order.tokenId];
 
         uint256 price = msg.value;
@@ -181,7 +195,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit OrderFilled(order);
     }
 
-    function fillBasicOrderWithERC20(BasicOrder calldata order, bytes calldata signature) external override nonReentrant {
+    function fillBasicOrderWithERC20(BasicOrder calldata order, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id = _id[order.seller][order.collectionAddr][order.tokenId];
 
         uint256 price = order.price;
@@ -232,7 +246,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit OrderFilled(order);
     }
 
-    function createAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant {
+    function createAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id;
 
         id = _id[msg.sender][auction.collectionAddr][auction.tokenId];
@@ -256,7 +270,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit AuctionCreated(auction);
     }
 
-    function cancelAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant {
+    function cancelAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id = _id[msg.sender][auction.collectionAddr][auction.tokenId];
 
         uint256 previousBid = _highestBid[id];
@@ -274,7 +288,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
     }
 
-    function sendBidWithETH(BasicAuction calldata auction, bytes calldata signature) external payable override nonReentrant {
+    function sendBidWithETH(BasicAuction calldata auction, bytes calldata signature) external payable override nonReentrant isPaused {
         bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
@@ -311,7 +325,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit NewBidCreated(auction);
     }
 
-    function sendBidWithERC20(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant {
+    function sendBidWithERC20(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
         require(_checkAuctionParams(auction, id), "Invalid parameters");
@@ -350,7 +364,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit NewBidCreated(auction);
     }
 
-    function claimAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant {
+    function claimAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
 
         bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
@@ -414,7 +428,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
     }
 
-    function auctionRefund(address collectionAddr, uint256 tokenId, bytes32 id, bytes calldata signature) external override nonReentrant {
+    function auctionRefund(address collectionAddr, uint256 tokenId, bytes32 id, bytes calldata signature) external override nonReentrant isPaused {
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
         require(_checkRefundCondition(collectionAddr, tokenId, id), "Auction cannot be refunded");
 
@@ -565,7 +579,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         );
     }
 
-    function _decodeAuction(bytes memory encodedAuction, bytes32 id) internal view returns (BasicAuction memory) {
+    function _decodeAuction(bytes memory encodedAuction, bytes32 id) private view returns (BasicAuction memory) {
         address collectionAddr;
         uint256 tokenId;
         uint256 initialPrice;
@@ -607,7 +621,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         return auction;
     }
 
-    function _encodeAuction(BasicAuction memory auction, bytes32 id) internal returns (bytes memory) {
+    function _encodeAuction(BasicAuction memory auction, bytes32 id) private returns (bytes memory) {
         bytes memory b = new bytes(288);
 
         address collectionAddr = auction.collectionAddr;
@@ -637,7 +651,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         return b;
     }
 
-    function _decodeOrder(bytes memory encodedOrder, bytes32 id) internal view returns (BasicOrder memory) {
+    function _decodeOrder(bytes memory encodedOrder, bytes32 id) private view returns (BasicOrder memory) {
         address collectionAddr;
         uint256 tokenId;
         address seller;
@@ -679,7 +693,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         return order;
     }
 
-    function _encodeOrder(BasicOrder memory order, bytes32 id) internal returns (bytes memory) {
+    function _encodeOrder(BasicOrder memory order, bytes32 id) private returns (bytes memory) {
         bytes memory b = new bytes(288);
 
         address collectionAddr = order.collectionAddr;
