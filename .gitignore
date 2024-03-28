@@ -3,3 +3,5 @@
 /contracts/RoyaltyProtocol/artifacts
 /contracts/TransferHelper/artifacts
 .vscode/cody.json
+contracts/ERC20Test/artifacts
+contracts/Proxy/artifacts

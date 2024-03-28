@@ -42,6 +42,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
     mapping(bytes32 => address) private _highestBidder;
     mapping(bytes32 => uint256) private _highestBid; 
     mapping(bytes32 => bool) private _claimable;
+    mapping(bytes32 => uint256) private _expirationTime;
 
     mapping(address => mapping(address => mapping(uint256 => bytes32))) private _id;
 
@@ -265,7 +266,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         require(_verifyOwnershipAndTokenApproval(auction.collectionAddr, auction.tokenId, AssetType.erc721), "Only owner can cancel this auction");
         require(previousBid == 0 && previousBidder == address(0), "Auction started");
         require(_checkAuctionParams(auction, id), "Auction does not exist or started");
-        
+
         delete _auctions[id];
         delete _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
@@ -276,31 +277,33 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
     function sendBidWithETH(BasicAuction calldata auction, bytes calldata signature) external payable override nonReentrant {
         bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
-        uint256 value = msg.value;
-
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
         require(_checkAuctionParams(auction, id), "Invalid parameters");
         require(auction.currency == address(0), "Currency unsupported");
+        require(_isActive(auction), "Auction Expired");
+
 
         BasicAuction memory a = auction;
 
-        uint256 previousBid = _highestBid[id];
-        address previousBidder = _highestBidder[id];
-    
-        if(previousBid != 0 && previousBidder != address(0)){
+        if(_highestBid[id] != 0 && _highestBidder[id] != address(0)){
+            uint256 previousBid = _highestBid[id];
+            address previousBidder = _highestBidder[id];
+            uint256 requiredBid = (previousBid * 10200) / 10000; // Calculamos el 102% de la puja anterior
 
-            require(value > previousBid.mul(2).div(100) && value == auction.highestBid, "Invalid bid amount");
+            require(msg.value > requiredBid && msg.value == auction.highestBid, "Invalid bid amount"); // Solo requerimos que sea mayor
+
             _safeSendETH(previousBidder, previousBid);
 
-            _highestBid[id] = value;
+            _highestBid[id] = msg.value;
             _highestBidder[id] = msg.sender;
         } else {
-            require(value == auction.initialPrice && value == auction.highestBid, "Invalid bid amount");
-            a.endedAt = _calculateAuctionEndTime();
-            _highestBid[id] = value;
+            require(msg.value == auction.initialPrice && msg.value == auction.highestBid, "Invalid bid amount");
+            _expirationTime[id] = _calculateFiveMinutes();
+            _highestBid[id] = msg.value;
             _highestBidder[id] = msg.sender; 
         }
 
+        a.endedAt = _expirationTime[id];
         bytes memory b = _encodeAuction(a, id);
         _auctions[id] = b;
         _claimable[id] = true;
@@ -311,34 +314,35 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
     function sendBidWithERC20(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant {
         bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
-        uint256 value = auction.highestBid;
-
         require(_checkAuctionParams(auction, id), "Invalid parameters");
         require(auction.currency != address(0), "Currency unsupported");
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
+        require(_isActive(auction), "Auction Expired");
 
         BasicAuction memory a = auction;
 
-        uint256 previousBid = _highestBid[id];
-        address previousBidder = _highestBidder[id];
-        if(previousBid != 0 && previousBidder != address(0)){
-            require(value > previousBid.mul(2).div(100) && value == auction.highestBid, "Invalid bid amount");
+        if(_highestBid[id] != 0 && _highestBidder[id] != address(0)){
+            uint256 previousBid = _highestBid[id];
+            address previousBidder = _highestBidder[id];
+            uint256 requiredBid = (previousBid * 10200) / 10000; // Calculamos el 102% de la puja anterior
+            require(auction.highestBid > requiredBid, "Invalid bid amount"); // Solo requerimos que sea mayor
 
-            _highestBid[id] = value;
+            _highestBid[id] = auction.highestBid;
             _highestBidder[id] = msg.sender;
 
             IERC20(auction.currency).transfer(previousBidder, previousBid);
-            _transferToken(auction.currency, value, msg.sender, address(this));
+            _transferToken(auction.currency, auction.highestBid, msg.sender, address(this));
         } else {
-            require(value == auction.initialPrice && value == auction.highestBid, "Invalid bid amount");
+            require(auction.highestBid == auction.initialPrice, "Invalid bid amount");
 
-            a.endedAt = _calculateAuctionEndTime();
-            _highestBid[id] = value;
+            _expirationTime[id] = _calculateFiveMinutes();
+            _highestBid[id] = auction.highestBid;
             _highestBidder[id] = msg.sender; 
 
-            _transferToken(auction.currency, value, msg.sender, address(this));
+            _transferToken(auction.currency, auction.highestBid, msg.sender, address(this));
         }
 
+        a.endedAt = _expirationTime[id];
         bytes memory b = _encodeAuction(a, id);
         _auctions[id] = b;
         _claimable[id] = true;
@@ -354,15 +358,17 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         address currentBidder = _highestBidder[id];
 
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
-        require(_checkAuctionParams(auction, id), "Auction already filled or expired");
+        require(_checkAuctionParams(auction, id), "invalid parameters");
         require(currentBid != 0 && currentBidder != address(0), "Auction has not begun");
-        require(_verifyOwnershipAndTokenApproval(auction.collectionAddr, auction.tokenId, AssetType.erc721) && auction.seller == msg.sender || currentBidder == msg.sender , "Invalid claimer");
+        require(auction.seller == msg.sender || currentBidder == msg.sender , "Invalid claimer");
+        require(_isExpired(auction), "Auction active");
 
         delete _auctions[id];
         delete _claimable[id];
         delete _id[auction.seller][auction.collectionAddr][auction.tokenId];
         delete _highestBid[id];
         delete _highestBidder[id];
+        delete _expirationTime[id];
 
         _ordersFilled[id] = true;
 
@@ -377,13 +383,13 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
                 if(auction.currency == address(0)){
                     _safeSendETH(r.feeRecipient, royaltyFee);
                 } else {
-                    _transferToken(auction.currency, royaltyFee, auction.highestBidder, r.feeRecipient);
+                    IERC20(auction.currency).transfer(r.feeRecipient, royaltyFee);
                 }
             }
             currentBid = currentBid.sub(royaltyFee);
         }
 
-        _transferAsset(auction.collectionAddr, auction.tokenId, auction.seller, auction.highestBidder, 1, AssetType.erc721);
+        _transferAsset(auction.collectionAddr, auction.tokenId, auction.seller, currentBidder, 1, AssetType.erc721);
 
         uint256 feeToSend = currentBid.mul(feeRate).div(MAX_FEE_RATE);
 
@@ -722,17 +728,24 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         bool validParams = (auction.collectionAddr != address(0) &&
                             auction.initialPrice != 0 &&
                             auction.seller != address(0)) && 
-                            auction.seller == IERC721(auction.collectionAddr).ownerOf(auction.tokenId) || 
-                            IERC1155(auction.collectionAddr).balanceOf(auction.seller, auction.tokenId) > 0;
+                            auction.seller == IERC721(auction.collectionAddr).ownerOf(auction.tokenId);
 
         // Verificar que la subasta no haya sido llenada y que no haya terminado o que el tiempo de finalización sea en el futuro
-        bool validAuctionStatus = (!_ordersFilled[id]) &&
-                                (auction.endedAt == 0 || auction.endedAt > block.timestamp);
+        bool validAuctionStatus = (!_ordersFilled[id]) && 
+                                (_expirationTime[id] == auction.endedAt);
 
         bool validOperator = (auction.seller == msg.sender || auction.highestBidder == msg.sender);
 
         // Devolver verdadero solo si todos los parámetros y el estado de la subasta son válidos
         return validParams && validAuctionStatus && validOperator;
+    }
+
+    function _isExpired(BasicAuction calldata auction) internal view returns(bool) {
+        return (auction.endedAt < block.timestamp);
+    }
+
+    function _isActive(BasicAuction calldata auction) internal view returns(bool) {
+        return (auction.endedAt > block.timestamp || auction.endedAt == 0);
     }
 
     function _checkOrderParams(BasicOrder calldata order, bytes32 id) internal view returns (bool) {
@@ -757,4 +770,16 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         (bool success, ) = payable(recipient).call{value: amount}("");
         require(success, "Failed to send ETH");
     }
+
+
+    /** TEST FUNCTION FOR QUICKLY AUCTIONS **/
+    function _calculateFiveMinutes() private view returns (uint256) {
+        uint256 timestampActual = block.timestamp;
+
+        // Sumamos 10 minutos al timestamp actual
+        uint256 timestampFuturo = timestampActual + 300;
+
+        return timestampFuturo;
+    }
+
 }
