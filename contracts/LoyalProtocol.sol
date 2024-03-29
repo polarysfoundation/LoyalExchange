@@ -15,8 +15,14 @@ import "./interfaces/ITransferHelper.sol";
 import "./interfaces/ILoyalProtocol.sol";
 import "./libs/BytesToString.sol";
 
-
+/**
+ * @title LoyalProtocol
+ * @author Uranus Dev
+ * @notice The following contract handles buying and selling protocols, as well as auctions for ERC721 and ERC1155 tokens
+ * @dev This contract handles loyalty tokens and rewards for the Loyal protocol
+ */
 contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
+
     using SafeMath for uint256;
     using Bytes32Utils for bytes32;
 
@@ -75,34 +81,71 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
     /********************** Functions **********************/
 
+    /**
+     * @dev Pauses the contract.
+     */
     function pause() external onlyOwner {
         paused = true;
     }
 
+
+    /**
+     * @dev Unpauses the contract.
+     */
     function unpause() external onlyOwner {
         paused = false;
     }
 
+    /**
+     * @dev Updates the royalty protocol contract address
+     * @param newRoyaltyAddress The address of the new royalty protocol contract
+     */
     function updateRoyaltyProtocol(address newRoyaltyAddress) external onlyAdmin isPaused {
         royaltyVault = IRoyaltyProtocol(newRoyaltyAddress);
     }
 
+
+    /**
+     * @dev Updates the transfer helper contract address
+     * @param newTransferHelper The address of the new transfer helper contract
+     */
     function updateTransferHelper(address newTransferHelper) external onlyAdmin isPaused {
         transferHelper = ITransferHelper(newTransferHelper);
     }
 
+
+    /**
+     * @dev Updates the fee address 
+     * @param newFeeAddress The address of the new fee recipient
+     */
     function updateFeeAddress(address newFeeAddress) external onlyAdmin isPaused {
         feeAddress = newFeeAddress;
     }
 
+
+    /**
+     * @dev Updates the fee rate
+     * @param newFeeRate The new fee rate to set
+     */
     function updateFeeRate(uint256 newFeeRate) external onlyAdmin isPaused {
         feeRate = newFeeRate;
     }
 
+
+    /**
+     * @dev Updates the admin address
+     * @param newAdminAddress The address of the new admin
+     */
     function updateAdmin(address newAdminAddress) external onlyOwner nonZeroAddress(newAdminAddress) {
         admin = newAdminAddress;
     }
 
+
+    /**
+    * @dev Creates a new basic order 
+    * @param order The BasicOrder struct containing order details
+    * @param signature The signature of the order hash, signed by seller
+    */
     function createBasicOrder(BasicOrder calldata order, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id;
 
@@ -128,6 +171,12 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit OrderCreated(order);
     }
 
+
+    /**
+     * @dev Cancels a basic order
+     * @param order The BasicOrder struct to cancel
+     * @param signature The signature to verify the caller
+     */
     function cancelBasicOrder(BasicOrder calldata order, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id = _id[msg.sender][order.collectionAddr][order.tokenId];
 
@@ -145,13 +194,19 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit OrderCanceled(order);
     }
 
+
+    /**
+    * @dev Fills a basic order
+    * @param order - The BasicOrder struct to fill
+    * @param signature - Signature to verify caller can fill order
+    */
     function fillBasicOrder(BasicOrder calldata order, bytes calldata signature) external override payable nonReentrant isPaused {
         bytes32 id = _id[order.seller][order.collectionAddr][order.tokenId];
 
         uint256 price = msg.value;
 
         if(order.asset == AssetType.erc1155){
-            price == price.mul(order.supply);
+            price == price.mul(order.supply); 
         }
 
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
@@ -195,27 +250,47 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit OrderFilled(order);
     }
 
+
+    /**
+    * @title Fill Basic Order With ERC20
+    * @dev Allows to fill a basic order paying with an ERC20 token
+    * @param order Order object with details of the order 
+    * @param signature Signature to validate the order
+    */
     function fillBasicOrderWithERC20(BasicOrder calldata order, bytes calldata signature) external override nonReentrant isPaused {
+        
+        // Get order id
         bytes32 id = _id[order.seller][order.collectionAddr][order.tokenId];
 
+        // Get order price
         uint256 price = order.price;
 
+        // Adjust price if order is for multiple tokens
         if(order.asset == AssetType.erc1155){
-            price == price.mul(order.supply);
+            price == price.mul(order.supply); 
         }
 
+        // Validate signature
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
+        
+        // Check order is valid
         require(_checkOrderParams(order, id), "order already filled or expired");
+        
+        // Require order currency is not ETH
         require(order.currency != address(0), "Order must be filled without erc20");
+        
+        // Check price is valid
         require(_checkPrice(order, price), "invalid amount");
 
-
+        // Delete order data
         delete _order[id];
         delete _id[order.seller][order.collectionAddr][order.tokenId];
         _ordersFilled[id] = true;
 
+        // Increment orders filled
         _addOrderFilled();
 
+        // Handle royalty if enabled
         if(_royaltySupported[id]){
             Royalty memory r = royaltyVault.getRoyaltyInfo(order.collectionAddr);
             uint256 royaltyFee = price.mul(r.feeRate).div(MAX_FEE_RATE);
@@ -228,24 +303,36 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
                     _transferToken(order.currency, royaltyFee, msg.sender, r.feeRecipient);
                 }
             }
+            // Adjust price after royalty
             price = price.sub(royaltyFee);
         }
 
+        // Transfer asset
         _transferAsset(order.collectionAddr, order.tokenId, order.seller, order.buyer, order.supply, order.asset);
 
+        // Calculate fee
         uint256 feeToSend = price.mul(feeRate).div(MAX_FEE_RATE);
 
+        // Send payment to seller
         if(order.seller != address(0)) {
             _transferToken(order.currency, price.sub(feeToSend), order.buyer, order.seller);
-        } 
-
+        }
+        
+        // Send fee to fee address
         if(feeAddress != address(0)){
             _transferToken(order.currency, feeToSend, order.buyer, feeAddress);
         }
 
+        // Emit event
         emit OrderFilled(order);
     }
 
+
+    /**
+     * @dev Creates a new auction
+     * @param auction Auction parameters
+     * @param signature Signature to verify auction creator
+     */
     function createAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id;
 
@@ -270,6 +357,12 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit AuctionCreated(auction);
     }
 
+
+    /**
+     * @dev Cancels an auction
+     * @param auction Auction parameters
+     * @param signature Signature to verify auction creator
+     */
     function cancelAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
         bytes32 id = _id[msg.sender][auction.collectionAddr][auction.tokenId];
 
@@ -288,6 +381,12 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
     }
 
+
+    /**
+    * @dev Allows a bidder to send a bid with ETH 
+    * @param auction Auction parameters 
+    * @param signature Signature to verify auction validity
+    */
     function sendBidWithETH(BasicAuction calldata auction, bytes calldata signature) external payable override nonReentrant isPaused {
         bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
@@ -325,109 +424,163 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         emit NewBidCreated(auction);
     }
 
-    function sendBidWithERC20(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
-        bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
-        require(_checkAuctionParams(auction, id), "Invalid parameters");
-        require(auction.currency != address(0), "Currency unsupported");
+    /**
+    * @dev Allows a bidder to send a bid with ERC20 token
+    * @param auction Auction parameters
+    * @param signature Signature to verify auction validity  
+    */
+    function sendBidWithERC20(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
+
+        // Verify auction validity with signature
+        bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
+        
+        // Check auction parameters
+        require(_checkAuctionParams(auction, id), "Invalid parameters");
+        
+        // Currency must be ERC20, not ETH
+        require(auction.currency != address(0), "Currency unsupported"); 
+        
+        // Auction must be active
         require(_isActive(auction), "Auction Expired");
 
+        // Store auction in memory
         BasicAuction memory a = auction;
 
+        // If there is a previous bid
         if(_highestBid[id] != 0 && _highestBidder[id] != address(0)){
+
+            // Calculate 102% of previous bid 
             uint256 previousBid = _highestBid[id];
             address previousBidder = _highestBidder[id];
-            uint256 requiredBid = (previousBid * 10200) / 10000; // Calculamos el 102% de la puja anterior
-            require(auction.highestBid > requiredBid, "Invalid bid amount"); // Solo requerimos que sea mayor
+            uint256 requiredBid = (previousBid * 10200) / 10000;
 
+            // New bid must be higher
+            require(auction.highestBid > requiredBid, "Invalid bid amount");
+            
+            // Update highest bid and bidder
             _highestBid[id] = auction.highestBid;
             _highestBidder[id] = msg.sender;
 
+            // Return previous bid to previous bidder
             IERC20(auction.currency).transfer(previousBidder, previousBid);
+            
+            // Transfer bid amount from bidder to contract
             _transferToken(auction.currency, auction.highestBid, msg.sender, address(this));
+
         } else {
+
+            // Initial bid must match auction initial price
             require(auction.highestBid == auction.initialPrice, "Invalid bid amount");
 
+            // Set auction end time
             _expirationTime[id] = _calculateAuctionEndTime();
+            
+            // Set initial highest bid and bidder
             _highestBid[id] = auction.highestBid;
-            _highestBidder[id] = msg.sender; 
+            _highestBidder[id] = msg.sender;
 
+            // Transfer initial bid amount from bidder to contract
             _transferToken(auction.currency, auction.highestBid, msg.sender, address(this));
         }
 
+        // Update auction end time
         a.endedAt = _expirationTime[id];
+        
+        // Encode updated auction
         bytes memory b = _encodeAuction(a, id);
         _auctions[id] = b;
+        
+        // Mark auction as having a claimable bid
         _claimable[id] = true;
 
+        // Emit event for new bid
         emit NewBidCreated(auction);
     }
 
+
+    /**
+    * @title Claim Auction
+    * @dev Allows seller or highest bidder to claim auction after it ends
+    * Checks auction parameters, bidder signatures, auction expiration
+    * Transfers NFT asset, sends bid amount to seller minus platform fees
+    * Deletes auction storage mappings after transfer
+    * @param auction Auction parameters struct
+    * @param signature Bidder's signature for authentication 
+    */
     function claimAuction(BasicAuction calldata auction, bytes calldata signature) external override nonReentrant isPaused {
 
-        bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
+            bytes32 id = _id[auction.seller][auction.collectionAddr][auction.tokenId];
 
-        uint256 currentBid = _highestBid[id];
-        address currentBidder = _highestBidder[id];
+            uint256 currentBid = _highestBid[id];
+            address currentBidder = _highestBidder[id];
 
-        require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
-        require(_checkAuctionParams(auction, id), "invalid parameters");
-        require(currentBid != 0 && currentBidder != address(0), "Auction has not begun");
-        require(auction.seller == msg.sender || currentBidder == msg.sender , "Invalid claimer");
-        require(_isExpired(auction), "Auction active");
+            require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
+            require(_checkAuctionParams(auction, id), "invalid parameters");
+            require(currentBid != 0 && currentBidder != address(0), "Auction has not begun");
+            require(auction.seller == msg.sender || currentBidder == msg.sender , "Invalid claimer");
+            require(_isExpired(auction), "Auction active");
 
-        delete _auctions[id];
-        delete _claimable[id];
-        delete _id[auction.seller][auction.collectionAddr][auction.tokenId];
-        delete _highestBid[id];
-        delete _highestBidder[id];
-        delete _expirationTime[id];
+            delete _auctions[id];
+            delete _claimable[id];
+            delete _id[auction.seller][auction.collectionAddr][auction.tokenId];
+            delete _highestBid[id];
+            delete _highestBidder[id];
+            delete _expirationTime[id];
 
-        _ordersFilled[id] = true;
+            _ordersFilled[id] = true;
 
-        _addOrderFilled();
+            _addOrderFilled();
 
-        if(auction.royaltySupport) {
-            Royalty memory r = royaltyVault.getRoyaltyInfo(auction.collectionAddr);
-            uint256 royaltyFee = currentBid.mul(r.feeRate).div(MAX_FEE_RATE);
+            if(auction.royaltySupport) {
+                Royalty memory r = royaltyVault.getRoyaltyInfo(auction.collectionAddr);
+                uint256 royaltyFee = currentBid.mul(r.feeRate).div(MAX_FEE_RATE);
 
-            delete _royaltySupported[id];
-            if(r.feeRecipient != address(0)) {
-                if(auction.currency == address(0)){
-                    _safeSendETH(r.feeRecipient, royaltyFee);
-                } else {
-                    IERC20(auction.currency).transfer(r.feeRecipient, royaltyFee);
+                delete _royaltySupported[id];
+                if(r.feeRecipient != address(0)) {
+                    if(auction.currency == address(0)){
+                        _safeSendETH(r.feeRecipient, royaltyFee);
+                    } else {
+                        IERC20(auction.currency).transfer(r.feeRecipient, royaltyFee);
+                    }
+                }
+                currentBid = currentBid.sub(royaltyFee);
+            }
+
+            _transferAsset(auction.collectionAddr, auction.tokenId, auction.seller, currentBidder, 1, AssetType.erc721);
+
+            uint256 feeToSend = currentBid.mul(feeRate).div(MAX_FEE_RATE);
+
+            if(auction.currency == address(0)){
+                _safeSendETH(auction.seller, currentBid.sub(feeToSend));
+
+                if(feeAddress != address(0)){
+                    _safeSendETH(feeAddress, feeToSend);
                 }
             }
-            currentBid = currentBid.sub(royaltyFee);
+
+            if(auction.currency != address(0) ){
+                require(IERC20(auction.currency).balanceOf(address(this)) >= currentBid.sub(feeToSend), "Insufficient contract balance"); // Additional check
+                IERC20(auction.currency).transfer(auction.seller, currentBid.sub(feeToSend));
+
+                if(feeAddress != address(0)){
+                    IERC20(auction.currency).transfer(feeAddress, feeToSend);
+                }
+            }  
+
+            emit AuctionClaimed(auction);
+
         }
 
-        _transferAsset(auction.collectionAddr, auction.tokenId, auction.seller, currentBidder, 1, AssetType.erc721);
 
-        uint256 feeToSend = currentBid.mul(feeRate).div(MAX_FEE_RATE);
-
-        if(auction.currency == address(0)){
-            _safeSendETH(auction.seller, currentBid.sub(feeToSend));
-
-            if(feeAddress != address(0)){
-                _safeSendETH(feeAddress, feeToSend);
-            }
-        }
-
-        if(auction.currency != address(0) ){
-            require(IERC20(auction.currency).balanceOf(address(this)) >= currentBid.sub(feeToSend), "Insufficient contract balance"); // Additional check
-            IERC20(auction.currency).transfer(auction.seller, currentBid.sub(feeToSend));
-
-            if(feeAddress != address(0)){
-                IERC20(auction.currency).transfer(feeAddress, feeToSend);
-            }
-        } 
-
-        emit AuctionClaimed(auction);
-
-    }
-
+    /**
+    * @dev Allows the highest bidder to get a refund if the auction expires 
+    * @param collectionAddr The NFT collection address
+    * @param tokenId The ID of the NFT being auctioned
+    * @param id The ID of the auction 
+    * @param signature The signature of the caller, used for authorization
+    */
     function auctionRefund(address collectionAddr, uint256 tokenId, bytes32 id, bytes calldata signature) external override nonReentrant isPaused {
         require(SignatureVerifier.verifySignature(id, signature, msg.sender), "Invalid signature");
         require(_checkRefundCondition(collectionAddr, tokenId, id), "Auction cannot be refunded");
@@ -453,50 +606,95 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
     /********************** Query Functions **********************/
 
+    /**
+    * @dev Returns the marketplace name
+    */
     function marketplace() external pure returns(string memory) {
         return bytes32("TAG Web3 Marketplace").bytes32ToString();
     }
 
+    /** 
+    * @dev Returns the contract version
+    */
     function version() external pure returns(string memory) {
         return bytes32("V1.0").bytes32ToString();
     }
 
+    /**
+    * @dev Returns the highest bid for a given auction
+    * @param id The ID of the auction
+    */ 
     function getHighestBid(bytes32 id) external override view returns (uint256) {
         return _highestBid[id];
     }
 
+    /**
+    * @dev Returns the address of the highest bidder for a given auction
+    * @param id The ID of the auction
+    */
     function getHighestBidder(bytes32 id) external override view returns(address) {
         return _highestBidder[id];
     }
 
+    /**
+    * @dev Returns the auction details for a given NFT
+    * @param seller The seller address 
+    * @param collectionAddr The NFT collection address
+    * @param tokenId The ID of the NFT
+    */
     function getAuctionByToken(address seller, address collectionAddr, uint256 tokenId) external override view returns(BasicAuction memory){
         bytes32 id = _id[seller][collectionAddr][tokenId];
         return _decodeAuction(_auctions[id], id);
     }
 
+    /**
+    * @dev Returns the auction details for a given auction ID
+    * @param id The ID of the auction
+    */
     function getAuctionById(bytes32 id) external override view returns(BasicAuction memory) {
         return _decodeAuction(_auctions[id], id);
     }
 
+    /**
+    * @dev Returns the order details for a given NFT
+    * @param seller The seller address
+    * @param collectionAddr The NFT collection address 
+    * @param tokenId The ID of the NFT
+    */
     function getOrderByTokenId(address seller, address collectionAddr, uint256 tokenId) external override view returns(BasicOrder memory) {
         bytes32 id = _id[seller][collectionAddr][tokenId];
         return _decodeOrder(_order[id], id);
     }
 
+    /**
+    * @dev Returns the order details for a given order ID
+    * @param id The ID of the order
+    */
     function getOrderById(bytes32 id) external override view returns(BasicOrder memory) {
         return _decodeOrder(_order[id], id);
-    } 
+    }
 
+    /**
+    * @dev Returns the active order ID for a given NFT
+    * @param seller The seller address
+    * @param collectionAddr The NFT collection address
+    * @param tokenId The ID of the NFT 
+    */ 
     function activeOrder(address seller, address collectionAddr, uint256 tokenId) external view override returns(bytes32) {
         bytes32 id = _id[seller][collectionAddr][tokenId];
         return id;
     }
 
+    /**
+    * @dev Returns the expiration time for an order 
+    * @param seller The seller address
+    * @param collectionAddr The NFT collection address
+    * @param tokenId The ID of the NFT
+    */
     function getExpirationTime(address seller, address collectionAddr, uint256 tokenId) external override view returns(uint256) {
         bytes32 id = _id[seller][collectionAddr][tokenId];
         return _decodeOrder(_order[id], id).expirationTime;
     }
-
 
     /********************** Internal Functions **********************/
 
@@ -517,17 +715,25 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         return false;
     }
 
+    /**
+    * @dev Checks if refund conditions are met for an auction
+    * @param collectionAddr Address of NFT collection 
+    * @param tokenId ID of the NFT
+    * @param id ID of the auction
+    * @return bool True if refund conditions are met, false otherwise
+    */
     function _checkRefundCondition(address collectionAddr, uint256 tokenId, bytes32 id) internal view returns(bool) {
         BasicAuction memory a = _decodeAuction(_auctions[id], id);
         return
-            a.seller != IERC721(collectionAddr).ownerOf(tokenId) && 
-            a.endedAt < block.timestamp &&
+            a.seller != IERC721(collectionAddr).ownerOf(tokenId) &&
+            a.endedAt < block.timestamp && 
             _highestBidder[id] == msg.sender &&
             _id[a.seller][collectionAddr][tokenId] == id &&
-            !_ordersFilled[id] && 
+            !_ordersFilled[id] &&
             a.highestBidder == msg.sender
         ;
     }
+
 
     function _transferToken(address erc20Addr, uint256 amount, address from, address to) internal {
         transferHelper.erc20TransferFrom(erc20Addr, from, to, amount);
@@ -737,22 +943,31 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         return false;
     }
 
-    function _checkAuctionParams(BasicAuction calldata auction, bytes32 id) internal view returns(bool) {
-        // Verificar que la dirección de la colección, el precio inicial y el vendedor sean válidos
-        bool validParams = (auction.collectionAddr != address(0) &&
+    /**
+     * @dev Checks auction parameters and status for validity
+     * @param auction Auction object with parameters to check  
+     * @param id Auction ID
+     * @return valid True if auction parameters and status are valid
+     */
+    function _checkAuctionParams(BasicAuction calldata auction, bytes32 id) internal view returns(bool valid) {
+
+        // Check collection address, initial price and seller are valid
+        bool validParams = (auction.collectionAddr != address(0) && 
                             auction.initialPrice != 0 &&
-                            auction.seller != address(0)) && 
+                            auction.seller != address(0)) &&
                             auction.seller == IERC721(auction.collectionAddr).ownerOf(auction.tokenId);
+        
+        // Check auction is not filled, not ended or ending in future 
+        bool validAuctionStatus = (!_ordersFilled[id]) &&
+                               (_expirationTime[id] == auction.endedAt);
 
-        // Verificar que la subasta no haya sido llenada y que no haya terminado o que el tiempo de finalización sea en el futuro
-        bool validAuctionStatus = (!_ordersFilled[id]) && 
-                                (_expirationTime[id] == auction.endedAt);
-
+        // Check caller is seller or highest bidder
         bool validOperator = (auction.seller == msg.sender || auction.highestBidder == msg.sender);
 
-        // Devolver verdadero solo si todos los parámetros y el estado de la subasta son válidos
+        // Return true only if all parameters and auction status are valid
         return validParams && validAuctionStatus && validOperator;
     }
+
 
     function _isExpired(BasicAuction calldata auction) internal view returns(bool) {
         return (auction.endedAt < block.timestamp);
@@ -762,19 +977,45 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         return (auction.endedAt > block.timestamp || auction.endedAt == 0);
     }
 
+        /**
+    * @dev Checks order parameters and status for validity
+    * @param order Order object with parameters to check
+    * @param id Order ID  
+    * @return valid True if order parameters and status are valid
+    */
     function _checkOrderParams(BasicOrder calldata order, bytes32 id) internal view returns (bool) {
-        return
-            order.collectionAddr != address(0) &&
-            order.price > 0 &&
-            order.seller != address(0) &&
-            order.expirationTime > 0 &&
-            order.expirationTime > block.timestamp &&
-            !_ordersFilled[id] && 
-            (order.seller == msg.sender ||
-            order.buyer == msg.sender);
-    } 
+        // Check collection address is not zero address
+        require(order.collectionAddr != address(0), "Collection address cannot be zero");
+        
+        // Check price is greater than zero
+        require(order.price > 0, "Price must be greater than zero"); 
+        
+        // Check seller is not zero address
+        require(order.seller != address(0), "Seller cannot be zero address");
+
+        // Check expiration time is greater than zero and in the future
+        require(order.expirationTime > 0 && order.expirationTime > block.timestamp, "Expiration time must be greater than zero and in the future");
+
+        // Check order is not already filled
+        require(!_ordersFilled[id], "Order is already filled");
+
+        // Check caller is seller or buyer
+        require(order.seller == msg.sender || order.buyer == msg.sender, "Caller must be seller or buyer");
+
+        return true;
+    }
 
 
+
+    /**
+     * @dev Sends ETH to a recipient address
+     * Checks that the contract has sufficient balance before sending
+     * Calls the recipient address with a default empty calldata
+     * Requires the send to succeed, otherwise reverts
+     * 
+     * @param recipient Address to send ETH to 
+     * @param amount Amount of ETH to send
+     */
     function _safeSendETH(address recipient, uint256 amount) private {
         require(
             address(this).balance >= amount,
@@ -784,6 +1025,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         (bool success, ) = payable(recipient).call{value: amount}("");
         require(success, "Failed to send ETH");
     }
+
 
 
     /** TEST FUNCTION FOR QUICKLY AUCTIONS **/
