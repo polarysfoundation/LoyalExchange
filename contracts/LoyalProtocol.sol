@@ -312,7 +312,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
             _highestBidder[id] = msg.sender;
         } else {
             require(msg.value == auction.initialPrice && msg.value == auction.highestBid, "Invalid bid amount");
-            _expirationTime[id] = _calculateFiveMinutes();
+            _expirationTime[id] = _calculateAuctionEndTime();
             _highestBid[id] = msg.value;
             _highestBidder[id] = msg.sender; 
         }
@@ -349,7 +349,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         } else {
             require(auction.highestBid == auction.initialPrice, "Invalid bid amount");
 
-            _expirationTime[id] = _calculateFiveMinutes();
+            _expirationTime[id] = _calculateAuctionEndTime();
             _highestBid[id] = auction.highestBid;
             _highestBidder[id] = msg.sender; 
 
@@ -443,7 +443,7 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
         delete _highestBid[id];
         delete _highestBidder[id];
 
-        if(a.currency != address(0)) {
+        if(a.currency == address(0)) {
             _safeSendETH(bidder, amount);
         } else {
             IERC20(a.currency).transfer(bidder, amount);
@@ -787,13 +787,13 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
 
     /** TEST FUNCTION FOR QUICKLY AUCTIONS **/
-    function _calculateFiveMinutes() private view returns (uint256) {
+    /*  function _calculateFiveMinutes() private view returns (uint256) {
         uint256 timestampActual = block.timestamp;
 
         // Sumamos 10 minutos al timestamp actual
         uint256 timestampFuturo = timestampActual + 300;
 
         return timestampFuturo;
-    }
+    }*/
 
 }
