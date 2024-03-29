@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 import "./interfaces/IRProtocol.sol";
 
-contract RoyaltyProtocol is IRoyaltyProtocol {
+contract RoyaltyProtocol is IRoyaltyProtocol, Ownable {
     using SafeMath for uint256;
 
     mapping(address => Royalty) private _royalty;
@@ -32,7 +32,7 @@ contract RoyaltyProtocol is IRoyaltyProtocol {
 
     function addRoyaltyInfo(address collectionAddr, uint256 feePercentage, address feeRecipient) external override {
         address admin = msg.sender;
-        require(Ownable(collectionAddr).owner() == admin, "Only owner can add royalty info");
+        require(Ownable(collectionAddr).owner() == admin || owner() == admin, "Only owner can add royalty info");
 
         Royalty memory royalty = Royalty(
             feePercentage,
@@ -45,5 +45,10 @@ contract RoyaltyProtocol is IRoyaltyProtocol {
 
         emit RoyaltyInfoAdded(collectionAddr, admin);
 
+    }
+
+    function removeRoyaltyInfo(address collectionAddr) external {
+        require(Ownable(collectionAddr).owner() == msg.sender || owner() == msg.sender, "Only owner can delete royalty info");
+        delete _royalty[collectionAddr];
     }
 }

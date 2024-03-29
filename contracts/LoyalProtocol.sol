@@ -19,7 +19,7 @@ import "./libs/BytesToString.sol";
  * @title LoyalProtocol
  * @author Uranus Dev
  * @notice The following contract handles buying and selling protocols, as well as auctions for ERC721 and ERC1155 tokens
- * @dev This contract handles loyalty tokens and rewards for the Loyal protocol
+ * @dev This smart contract handles sales and purchase protocols, as well as auction protocols, for non-expendable tokens, with royalty support. 
  */
 contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 

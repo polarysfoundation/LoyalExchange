@@ -1,6 +1,6 @@
 {
   "name": "RoyaltyProtocol",
-  "address": "0xe1e1c8e3ddd87149edfa8f275e963283f9f1602a",
+  "address": "0xc193a99361b152fc5788dd0422f277131ff84cdc",
   "abi": [
     {
       "inputs": [
@@ -21,6 +21,45 @@
         }
       ],
       "name": "addRoyaltyInfo",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "collectionAddr",
+          "type": "address"
+        }
+      ],
+      "name": "removeRoyaltyInfo",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -62,6 +101,19 @@
       ],
       "name": "RoyaltyInfoUpdated",
       "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
       "inputs": [
@@ -126,8 +178,21 @@
       ],
       "stateMutability": "view",
       "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     }
   ],
   "filePath": " - connect to localhost - /contracts/RoyaltyProtocol/RoyaltyProtocol.sol",
-  "pinnedAt": 1711507896402
+  "pinnedAt": 1711728373889
 }
