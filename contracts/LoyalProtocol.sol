@@ -252,7 +252,6 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
 
     /**
-    * @title Fill Basic Order With ERC20
     * @dev Allows to fill a basic order paying with an ERC20 token
     * @param order Order object with details of the order 
     * @param signature Signature to validate the order
@@ -501,7 +500,6 @@ contract LoyalProtocol is ILoyalProtocol, ReentrancyGuard, Ownable {
 
 
     /**
-    * @title Claim Auction
     * @dev Allows seller or highest bidder to claim auction after it ends
     * Checks auction parameters, bidder signatures, auction expiration
     * Transfers NFT asset, sends bid amount to seller minus platform fees
