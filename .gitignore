@@ -5,3 +5,4 @@
 .vscode/cody.json
 contracts/ERC20Test/artifacts
 contracts/Proxy/artifacts
+.deploys
