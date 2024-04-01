@@ -1,62 +1,66 @@
-Reporte de Auditoría de Seguridad
+# Informe de Auditoría de Seguridad
 
-Resumen
+### Resumen
 
-El contrato LoyalProtocol implementa un mercado para el intercambio de NFTs y otros activos digitales. Permite a los usuarios crear y completar órdenes de compra/venta, hacer ofertas y realizar subastas. El contrato administra el depósito en garantía (escrow) y la transferencia de activos entre las partes.
+El contrato LoyalProtocol implementa un mercado para el intercambio de NFTs y otros activos digitales. Permite a los usuarios crear y llenar órdenes de compra/venta, hacer ofertas y realizar subastas. El contrato gestiona el depósito en garantía y la transferencia de activos entre las partes.
 
-Funciones clave
+### Funciones Clave:
 
-createBasicOrder - Crea una nueva orden de compra/venta.
-fillBasicOrder - Completa una orden existente de compra/venta.
-cancelBasicOrder - Cancela una orden sin completar.
-makeOffer - Realiza una oferta por un activo.
-acceptOffer - Acepta una oferta existente.
-cancelOffer - Cancela una oferta.
-createAuction - Crea una nueva subasta.
-bid - Coloca una puja en una subasta.
-cancelAuction - Cancela una subasta activa.
-claimAuction - El postor ganador reclama el NFT después de que finaliza la subasta.
-El contrato utiliza ReentrancyGuard de OpenZeppelin para prevenir ataques de reentrada.
+**createBasicOrder** - Crear una nueva orden de compra/venta
+**fillBasicOrder** - Llenar una orden de compra/venta existente
+**cancelBasicOrder** - Cancelar una orden no completada
+**makeOffer** - Hacer una oferta por un activo
+**acceptOffer** - Aceptar una oferta existente
+**cancelOffer** - Cancelar una oferta
+**createAuction** - Crear una nueva subasta
+**bid - Colocar** una oferta en una subasta
+**cancelAuction** - Cancelar una subasta activa
+**claimAuction** - El postor ganador reclama el NFT después de que finaliza la subasta
 
-Análisis de Vulnerabilidades
+El contrato utiliza ReentrancyGuard de OpenZeppelin para prevenir ataques de reentrancia.
 
-Desbordamiento de Enteros (Integer Overflow)
+## Análisis de Vulnerabilidades
 
-Gravedad: Alta
-ID SWC: SWC-101
-Las funciones _safeAdd y _safeSub de la librería SafeMath se utilizan en varios lugares para prevenir el overflow/underflow de enteros. Esto mitiga el riesgo.
+##### Desbordamiento de Enteros
+**Severidad:** Alta
+**ID de SWC:** SWC-101
 
-Control de Acceso y Autorización
+Las funciones _safeAdd y _safeSub de la biblioteca SafeMath se utilizan en varios lugares para prevenir el desbordamiento/subdesbordamiento de enteros. Esto mitiga el riesgo.
 
-Gravedad: Media
-ID SWC: SWC-999
-El modificador onlyAdmin restringe el acceso a funciones sensibles como la actualización de los parámetros del protocolo y la dirección administrativa. Es una buena práctica.
+##### Control de Acceso y Autorización
+**Severidad:** Media
+**ID de SWC:** SWC-999
 
-Sin embargo, no hay controles de acceso en torno a la creación y cancelación de órdenes.  Cualquier usuario puede crear y cancelar órdenes en nombre de otros usuarios, lo que puede conducir a potenciales ataques de abuso o sabotaje.
+El modificador onlyAdmin restringe el acceso a funciones sensibles como la actualización de parámetros del protocolo y la dirección del administrador. Esto es una buena práctica.
 
-Recomendación: Agregar modificadores para asegurar que solo el creador de la orden pueda cancelarla.
-Reentrada (Reentrancy)
+Sin embargo, no hay controles de acceso en torno a la creación y cancelación de órdenes. Cualquier usuario puede crear y cancelar órdenes en nombre de otros usuarios. Esto puede llevar a posibles ataques de provocación.
 
-Gravedad: Media
-ID SWC: SWC-107
-El uso de ReentrancyGuard previene ataques de reentrada al completar órdenes o transferir activos.
+**Recomendación:** Agregar modificadores para garantizar que solo el creador de la orden pueda cancelarla.
 
-Sin embargo, hay que evitar las llamadas externas a los contratos royaltyVault y transferHelper en estados intermedios en donde las variables de estado hayan sido actualizadas pero los activos no hayan sido transferidos aún. Esto puede llevar a una vulnerabilidad de reentrada.
+##### Reentrancia
+**Severidad:** Media
+**ID de SWC:** SWC-107
 
-Recomendación:
-Mover todas las llamadas externas al final, después de actualizar el estado interno.
-Considerar utilizar el patrón de "cheques-efectos-interacciones" (checks-effects-interactions).
-Errores de Lógica
+El uso de ReentrancyGuard previene ataques de reentrancia al llenar órdenes o transferir activos.
 
-Gravedad: Media
-No existe validación para garantizar que el firmante de la orden sea realmente el propietario del activo.  Esto podría permitir que cualquiera cree órdenes falsas en nombre de un usuario.
+Sin embargo, las llamadas externas a los contratos royaltyVault y transferHelper deben evitarse en estados intermedios donde las variables de estado se han actualizado pero los activos aún no se han transferido. Esto puede potencialmente llevar a una vulnerabilidad de reentrancia.
 
-Recomendación: Validar que el firmante de la orden es el dueño del activo antes de crearla.
-Llamadas Externas
+**Recomendación:** Mover todas las llamadas externas al final después de que se haya actualizado el estado interno.
 
-Gravedad: Baja
-El contrato realiza llamadas externas a royaltyVault y transferHelper. Hay que asegurarse de que existen las validaciones adecuadas para evitar ataques como la reentrada. Verificar la titularidad del contrato, implementar mecanismos de retroceso (rollbacks), etc.
+Considerar el uso del patrón checks-effects-interactions.
 
-Resumen
+##### Errores de Lógica
+**Severidad:** Media
 
-En general, el contrato implementa un mercado NFT básico con algunas protecciones de control de acceso y reentrada. Existen algunos puntos preocupantes en torno a la validación adecuada de autorizaciones y el orden de las operaciones. Seguir las mejores prácticas en torno al patrón “cheques-efectos-interacciones” puede hacer el código más robusto.
+No hay validación de que el firmante de la orden sea realmente el propietario del activo. Esto podría permitir que cualquiera cree órdenes falsas en nombre de un usuario.
+
+**Recomendación:** Validar que el firmante de la orden sea el propietario del activo antes de crear la orden.
+
+##### Llamadas Externas
+**Severidad:** Baja
+
+El contrato realiza llamadas externas a royaltyVault y transferHelper. Asegúrate de que haya validaciones adecuadas para evitar ataques como la reentrancia. Verificar la propiedad del contrato, implementar retrocesos, etc.
+
+## Resumen
+
+En general, el contrato implementa un mercado básico de NFT con algunas protecciones de control de acceso y reentrancia. Algunas áreas de preocupación en torno a validaciones de autorización adecuadas y orden de operaciones. Seguir las mejores prácticas en torno al patrón checks-effects-interactions puede hacer que el código sea más robusto.
