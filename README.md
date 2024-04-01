@@ -26,7 +26,6 @@ The following code, as well as this document, will be in constant development an
 
 In Loyal Protocol, contributions are welcome, if you want to make changes in contracts, for improvement, optimization, readability and fix bugs found, must pass the following requirements: 
 
-- Presentation of bugs found (If to fix)
 - Detailed, readable code and docstring comments. 
 - have successfully passed the exhaustive tests.
 - If making a modification to third-party dependencies, ```yarn audit``` passes.
