@@ -2,7 +2,7 @@
 
 # Loyal Protocol
 
-Loyal Protocol is a protocol for the sale and purchase of digital assets NFTs (Non-Fungible Tokens) ERC721 and ERC1155 deployed in the blockchain. 
+Loyal Protocol is a protocol for the sale and purchase of digital assets NFT (Non-Fungibles Tokens) ERC721 and ERC1155, safe and efficient.
 
 ## Table of Content
 
